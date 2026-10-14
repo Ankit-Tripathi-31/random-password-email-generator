@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Generate a secure password or personalized email address ideas.">
+    <title>Password &amp; Email Generator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <main class="container">
+        <header class="page-header">
+            <p class="eyebrow">QUICK TOOLS</p>
+            <h1>Password &amp; Email <span>Generator</span></h1>
+            <p class="intro">Create a strong password or find a fresh email address idea.</p>
+        </header>
+
+        <nav class="tabs" role="tablist" aria-label="Generator modules">
+            <button class="tab active" id="password-tab" type="button" role="tab"
+                aria-selected="true" aria-controls="password-panel">Password generator</button>
+            <button class="tab" id="email-tab" type="button" role="tab"
+                aria-selected="false" aria-controls="email-panel">Email generator</button>
+        </nav>
+
+        <section class="panel" id="password-panel" role="tabpanel" aria-labelledby="password-tab">
+            <h2>Generate a random password</h2>
+            <p class="panel-description">Create an eight-character password with a mix of character types.</p>
+            <div class="display">
+                <input type="text" id="password" placeholder="Your password" aria-label="Generated password" readonly>
+                <button class="icon-button" id="copy-password" type="button" aria-label="Copy password">
+                    <img src="images/copy.png" alt="">
+                </button>
+            </div>
+            <button class="primary-button" id="generate-password" type="button">Generate password</button>
+        </section>
+
+        <section class="panel" id="email-panel" role="tabpanel" aria-labelledby="email-tab" hidden>
+            <h2>Find your email address ideas</h2>
+            <p class="panel-description">Enter your name once to generate eight unique address suggestions.</p>
+            <form id="email-form" novalidate>
+                <label class="visually-hidden" for="name-input">Your name</label>
+                <input class="name-input" id="name-input" name="name" type="text" autocomplete="name"
+                    maxlength="80" placeholder="Enter your name" required>
+                <button class="primary-button" type="submit">Generate email ideas</button>
+            </form>
+            <p class="notice">These are suggestions only. They do not create mailboxes or confirm address availability.</p>
+            <p class="status" id="email-status" aria-live="polite"></p>
+            <div class="email-results" id="email-results" aria-label="Generated email suggestions"></div>
+        </section>
+
+        <p class="status" id="password-status" aria-live="polite"></p>
+    </main>
+
+    <script>
+        const passwordBox = document.getElementById("password");
+        const emailResults = document.getElementById("email-results");
+        const emailStatus = document.getElementById("email-status");
+        const passwordStatus = document.getElementById("password-status");
+        const upperCase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        const lowerCase = "abcdefghijklmnopqrstuvwxyz";
+        const numbers = "0123456789";
+        const symbols = "@#$%^&*({)}|?+=/?<,>";
+        const allChars = upperCase + lowerCase + numbers + symbols;
+
+        function randomIndex(length) {
+            const range = 0x100000000;
+            const limit = range - (range % length);
+            const value = new Uint32Array(1);
+            do {
+                crypto.getRandomValues(value);
+            } while (value[0] >= limit);
+            return value[0] % length;
+        }
+
+        function createPassword() {
+            let password = "";
+            password += upperCase[randomIndex(upperCase.length)];
+            password += lowerCase[randomIndex(lowerCase.length)];
+            password += numbers[randomIndex(numbers.length)];
+            password += symbols[randomIndex(symbols.length)];
+
+            while (password.length < 8) {
+                password += allChars[randomIndex(allChars.length)];
+            }
+
+            passwordBox.value = password;
+            passwordStatus.textContent = "";
+        }
+
+        async function copyText(text, statusElement, successMessage) {
+            try {
+                if (navigator.clipboard && window.isSecureContext) {
+                    await navigator.clipboard.writeText(text);
+                } else {
+                    const temporaryInput = document.createElement("textarea");
+                    temporaryInput.value = text;
+                    temporaryInput.setAttribute("readonly", "");
+                    temporaryInput.style.position = "fixed";
+                    temporaryInput.style.opacity = "0";
+                    document.body.appendChild(temporaryInput);
+                    temporaryInput.select();
+                    const copied = document.execCommand("copy");
+                    temporaryInput.remove();
+                    if (!copied) {
+                        throw new Error("Clipboard copy was not successful.");
+                    }
+                }
+                statusElement.textContent = successMessage;
+            } catch (error) {
+                statusElement.textContent = "Copy failed. Select and copy the text manually.";
+                console.error("Unable to copy text to the clipboard.", error);
+            }
+        }
+
+        function normalizeName(name) {
+            return name
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, ".")
+                .replace(/^\.+|\.+$/g, "");
+        }
+
+        function generateEmailIdeas(name) {
+            const base = normalizeName(name);
+            if (!base || !/[a-z0-9]/.test(base)) {
+                return [];
+            }
+
+            const nameParts = base.split(".").filter(Boolean);
+            const firstName = nameParts[0];
+            const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : "";
+            const localParts = [
+                base,
+                base.replace(/\./g, ""),
+                lastName ? `${firstName}.${lastName}` : `${firstName}.mail`,
+                lastName ? `${firstName[0]}${lastName}` : `${firstName}.online`,
+                lastName ? `${firstName}${lastName[0]}` : `${firstName}.inbox`,
+                `${base}.hello`,
+                `${base}.connect`,
+                `${base}.daily`
+            ];
+            const domains = ["gmail.com", "outlook.com", "yahoo.com"];
+            const results = new Set();
+
+            for (let index = 0; results.size < 8; index += 1) {
+                const local = localParts[index % localParts.length];
+                const digits = Math.floor(100 + Math.random() * 9900);
+                const domain = domains[index % domains.length];
+                results.add(`${local}${digits}@${domain}`);
+            }
+
+            return Array.from(results);
+        }
+
+        function showEmailIdeas(emails) {
+            emailResults.replaceChildren();
+            emails.forEach((email) => {
+                const item = document.createElement("div");
+                item.className = "email-result";
+
+                const address = document.createElement("span");
+                address.className = "email-address";
+                address.textContent = email;
+
+                const copyButton = document.createElement("button");
+                copyButton.className = "copy-email";
+                copyButton.type = "button";
+                copyButton.textContent = "Copy";
+                copyButton.setAttribute("aria-label", `Copy ${email}`);
+                copyButton.addEventListener("click", () => {
+                    copyText(email, emailStatus, "Email suggestion copied.");
+                });
+
+                item.append(address, copyButton);
+                emailResults.appendChild(item);
+            });
+        }
+
+        document.getElementById("generate-password").addEventListener("click", createPassword);
+        document.getElementById("copy-password").addEventListener("click", () => {
+            if (passwordBox.value) {
+                copyText(passwordBox.value, passwordStatus, "Password copied.");
+            } else {
+                passwordStatus.textContent = "Generate a password before copying.";
+            }
+        });
+
+        document.getElementById("email-form").addEventListener("submit", (event) => {
+            event.preventDefault();
+            const name = document.getElementById("name-input").value.trim();
+            if (!name) {
+                emailResults.replaceChildren();
+                emailStatus.textContent = "Enter a name to generate email suggestions.";
+                return;
+            }
+
+            const emails = generateEmailIdeas(name);
+            if (emails.length === 0) {
+                emailResults.replaceChildren();
+                emailStatus.textContent = "Enter a name containing English letters or numbers.";
+                return;
+            }
+
+            showEmailIdeas(emails);
+            emailStatus.textContent = "Eight unique email address ideas generated.";
+        });
+
+        const tabs = document.querySelectorAll(".tab");
+        tabs.forEach((tab) => {
+            tab.addEventListener("click", () => {
+                const showEmail = tab.id === "email-tab";
+                document.getElementById("password-panel").hidden = showEmail;
+                document.getElementById("email-panel").hidden = !showEmail;
+                tabs.forEach((item) => {
+                    const isActive = item === tab;
+                    item.classList.toggle("active", isActive);
+                    item.setAttribute("aria-selected", String(isActive));
+                });
+            });
+            tab.addEventListener("keydown", (event) => {
+                if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                    const nextTab = tabs[Array.from(tabs).indexOf(tab) + (event.key === "ArrowRight" ? 1 : -1)];
+                    if (nextTab) {
+                        nextTab.focus();
+                        nextTab.click();
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>
